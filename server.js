@@ -117,8 +117,11 @@ async function askChatGPT(userText) {
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data?.error?.message || "Blad OpenAI API");
-  }
+  console.error("OPENAI ERROR:", response.status, data);
+  throw new Error(
+    `OpenAI HTTP ${response.status}: ${data?.error?.message || JSON.stringify(data)}`
+  );
+}
 
   return data?.choices?.[0]?.message?.content?.trim() || "OK";
 }
