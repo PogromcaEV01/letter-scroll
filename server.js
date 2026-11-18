@@ -13,9 +13,115 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 10000;
-const rooms = new Map();
-const roomTimers = new Map();
-const ROOM_TTL_MS = 120000;
+
+// Słownik do dekodowania (Morse -> Tekst) i enkodowania (Tekst -> Morse)
+const MORSE_TO_CHAR = {
+  ".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F", "--.": "G",
+  "....": "H", "..": "I", ".---": "J", "-.-": "K", ".-..": "L", "--": "M", "-.": "N",
+  "---": "O", ".--.": "P", "--.-": "Q", ".-.": "R", "...": "S", "-": "T", "..-": "U",
+  "...-": "V", ".--": "W", "-..-": "X", "-.--": "Y", "--..": "Z",
+  "-----": "0", ".----": "1", "..---": "2", "...--": "3", "....-": "4",
+  ".....": "5", "-....": "6", "--...": "7", "---..": "8", "----.": "9"
+};
+
+const CHAR_TO_MORSE = Object.fromEntries(
+  Object.entries(MORSE_TO_CHAR).map(([morse, ch]) => [ch, morse])
+);
+
+// DEKODER: zamienia ciąg Morse'a (np. "... --- ... / - . ... -") na zwykły tekst
+function decodeMorseToText(morseString) {
+  return String(morseString || "")
+    .trim()
+    .split(/\s*\/\s*/) // słowa oddzielone ukośnikiem "/"
+    .map((word) =>
+      word
+        .trim()
+        .split(/\s+/) // litery oddzielone spacją
+        .map((code) => MORSE_TO_CHAR[code] || "")
+        .join("")
+    )
+    .filter(Boolean)
+    .join(" ");
+}
+
+// Normalizacja odpowiedzi z GPT (usuwa polskie ogonki i znaki specjalne przed enkodowaniem)
+function normalizeText(text) {
+  return String(text || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/Ł/g, "L")
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ENKODER: zamienia cały tekst odpowiedzi GPT na jedną paczkę sygnałów dla telefonu
+function encodeTextToMorsePacket(text) {
+  const cleanText = normalizeText(text);
+  const words = cleanText.split(" ").filter(Boolean);
+  const signals = [];
+  const morseWords = [];
+
+  words.forEach((word, wIdx) => {
+    const letterCodes = [];
+    for (let lIdx = 0; lIdx < word.length; lIdx++) {
+      const code = CHAR_TO_MORSE[word[lIdx]];
+      if (!code) continue;
+      letterCodes.push(code);
+
+      for (const symbol of code) {
+        signals.push({ type: "symbol", symbol });
+      }
+      signals.push({ type: "letter_end" });
+    }
+    if (letterCodes.length) morseWords.push(letterCodes.join(" "));
+    if (wIdx < words.length - 1) {
+      signals.push({ type: "word_end" });
+    }
+  });
+
+  return {
+    text: cleanText,
+    morse: morseWords.join(" / "),
+    signals
+  };
+}
+
+async function askChatGPT(userText) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Brak OPENAI_API_KEY w zmiennych srodowiskowych Render");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Odpowiadaj po polsku, ale ultra krótko (maksymalnie 2-5 słów), bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
+        },
+        { role: "user", content: userText }
+      ],
+      max_tokens: 50,
+      temperature: 0.5
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.message || "Blad OpenAI API");
+  }
+
+  return data?.choices?.[0]?.message?.content?.trim() || "OK";
+}
 
 app.use((req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
@@ -29,145 +135,56 @@ app.use(express.static(path.join(__dirname, "strona"), {
   extensions: ["html"],
   maxAge: "1h"
 }));
+app.use(express.static(__dirname, {
+  extensions: ["html"],
+  maxAge: "1h"
+}));
 
 app.get("/health", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json({ ok: true, service: "morse-link", rooms: rooms.size });
+  res.json({ ok: true, service: "morse-link-gpt" });
 });
 
-function clearRoomTimer(code) {
-  const timer = roomTimers.get(code);
-  if (timer) {
-    clearTimeout(timer);
-    roomTimers.delete(code);
-  }
-}
-
-function scheduleRoomCleanup(code) {
-  clearRoomTimer(code);
-  const timer = setTimeout(() => {
-    roomTimers.delete(code);
-    const room = rooms.get(code);
-    if (room && room.size === 0) {
-      rooms.delete(code);
-    }
-  }, ROOM_TTL_MS);
-  roomTimers.set(code, timer);
-}
-
-function makeRoomCode() {
-  let code;
-  do {
-    code = String(Math.floor(100000 + Math.random() * 900000));
-  } while (rooms.has(code));
-  return code;
-}
-
-function leaveCurrentRoom(socket, notify = true, immediateDelete = false) {
-  const code = socket.data.roomCode;
-  if (!code) return;
-  const room = rooms.get(code);
-  socket.leave(code);
-  socket.data.roomCode = null;
-
-  if (room) {
-    room.delete(socket.id);
-    if (notify) socket.to(code).emit("peer_left");
-    if (room.size === 0) {
-      if (immediateDelete) {
-        clearRoomTimer(code);
-        rooms.delete(code);
-      } else {
-        scheduleRoomCleanup(code);
-      }
-    }
-  }
-}
-
 io.on("connection", (socket) => {
-  socket.on("create_room", (_unused, ack) => {
-    if (typeof ack !== "function") return;
-    leaveCurrentRoom(socket, true, true);
-    const code = makeRoomCode();
-    clearRoomTimer(code);
-    rooms.set(code, new Set([socket.id]));
-    socket.join(code);
-    socket.data.roomCode = code;
-    ack({ ok: true, code });
-  });
+  socket.on("morse_message", async (payload, ack) => {
+    const rawMorse = typeof payload?.morse === "string" ? payload.morse : "";
+    const decodedText = decodeMorseToText(rawMorse);
 
-  socket.on("join_room", (rawCode, ack) => {
-    if (typeof ack !== "function") return;
-    const code = String(rawCode || "").replace(/\D/g, "").slice(0, 6);
-    const room = rooms.get(code);
-
-    if (!/^\d{6}$/.test(code) || !room) {
-      ack({ ok: false, error: "Nie znaleziono takiego pokoju." });
-      return;
-    }
-    if (!room.has(socket.id) && room.size >= 2) {
-      ack({ ok: false, error: "Ten pokój jest już pełny." });
+    if (!decodedText) {
+      if (typeof ack === "function") ack({ ok: false, error: "Nie rozpoznano liter Morse'a." });
       return;
     }
 
-    if (socket.data.roomCode && socket.data.roomCode !== code) {
-      leaveCurrentRoom(socket, true, true);
+    if (typeof ack === "function") {
+      ack({ ok: true, decodedText });
     }
-    clearRoomTimer(code);
-    room.add(socket.id);
-    socket.join(code);
-    socket.data.roomCode = code;
-    ack({ ok: true, code, peers: room.size });
-    socket.to(code).emit("peer_joined");
-  });
 
-  socket.on("rejoin_room", (rawCode, ack) => {
-    const code = String(rawCode || "").replace(/\D/g, "").slice(0, 6);
-    if (!/^\d{6}$/.test(code)) {
-      if (typeof ack === "function") ack({ ok: false, error: "Nieprawidłowy kod pokoju." });
-      return;
-    }
-    let room = rooms.get(code);
-    if (!room) {
-      room = new Set();
-      rooms.set(code, room);
-    }
-    if (!room.has(socket.id) && room.size >= 2) {
-      if (typeof ack === "function") ack({ ok: false, error: "Ten pokój jest już pełny." });
-      return;
-    }
-    clearRoomTimer(code);
-    room.add(socket.id);
-    socket.join(code);
-    socket.data.roomCode = code;
-    if (typeof ack === "function") ack({ ok: true, code, peers: room.size });
-    if (room.size >= 2) {
-      socket.to(code).emit("peer_joined");
-    }
-  });
+    try {
+      const gptReplyText = await askChatGPT(decodedText);
+      const encodedPacket = encodeTextToMorsePacket(gptReplyText);
 
-  socket.on("morse_signal", (payload) => {
-    const code = socket.data.roomCode;
-    if (!code || !rooms.has(code) || !payload || typeof payload !== "object") return;
-
-    let clean = null;
-    if (payload.type === "symbol" && (payload.symbol === "." || payload.symbol === "-")) {
-      clean = { type: "symbol", symbol: payload.symbol };
-    } else if (payload.type === "letter_end") {
-      clean = { type: "letter_end" };
-    } else if (payload.type === "word_end") {
-      clean = { type: "word_end" };
+      // Odsyłamy całą odpowiedź na raz do telefonu
+      socket.emit("morse_reply", {
+        ok: true,
+        userText: decodedText,
+        replyText: encodedPacket.text,
+        replyMorse: encodedPacket.morse,
+        signals: encodedPacket.signals
+      });
+    } catch (err) {
+      const fallback = encodeTextToMorsePacket("ERR");
+      socket.emit("morse_reply", {
+        ok: false,
+        error: err.message,
+        userText: decodedText,
+        replyText: "ERR",
+        replyMorse: fallback.morse,
+        signals: fallback.signals
+      });
     }
-    if (clean) socket.to(code).emit("morse_signal", clean);
-  });
-
-  socket.on("leave_room", () => leaveCurrentRoom(socket, true, true));
-
-  socket.on("disconnect", () => {
-    leaveCurrentRoom(socket, true, false);
   });
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`MORSE LINK listening on 0.0.0.0:${PORT}`);
+  console.log(`MORSE LINK GPT listening on 0.0.0.0:${PORT}`);
 });
