@@ -101,16 +101,16 @@ async function askChatGPT(userText) {
       "Authorization": `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "system",
           content:
-            "Odpowiadaj po polsku, ale ultra krótko (maksymalnie 2-5 słów), bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
+            "Odpowiadaj po polsku, ale krótko (maksymalnie jedno dwuczęściowe zdanie), bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
         },
         { role: "user", content: userText }
       ],
-      max_tokens: 50,
+      max_tokens: 500,
       temperature: 0.5
     })
   });
