@@ -209,13 +209,14 @@ function startPress(){
  clearTimeout(wordTimer);
 
  fullscreenTimer=setTimeout(async()=>{
-  try{
-   if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
-   else await document.exitFullscreen();
-   if(navigator.vibrate)navigator.vibrate([100,50,100]);
-   setRadioStatus('PEŁNY EKRAN PRZEŁĄCZONY');
-  }catch(_){}
- },7000);
+ try{
+  if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
+  else await document.exitFullscreen();
+  if(navigator.vibrate)navigator.vibrate([100,50,100]);
+  setRadioStatus('PEŁNY EKRAN PRZEŁĄCZONY');
+  pressAt=0; // <-- TO JEST TEN MAGICZNY FIX! Zerujemy czas, żeby endPress zignorowało puszczenie przycisku.
+ }catch(_){}
+},7000);
 }
 
 function endPress(){
