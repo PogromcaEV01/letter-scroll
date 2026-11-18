@@ -111,6 +111,7 @@ async function askChatGPT(userText) {
         { role: "user", content: userText }
       ],
       max_completion_tokens: 100,
+      temperature: 1
     })
   });
 
