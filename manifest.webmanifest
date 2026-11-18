@@ -1,0 +1,9 @@
+{
+  "name": "MORSE LINK BETA 0.1",
+  "short_name": "MORSE LINK",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#10131a",
+  "theme_color": "#10131a",
+  "description": "Dwukierunkowy komunikator Morse'a P2P"
+}
