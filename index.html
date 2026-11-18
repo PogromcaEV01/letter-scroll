@@ -1,1 +1,321 @@
-v
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#10131a">
+<meta name="description" content="MORSE LINK — komunikator Morse'a z ChatGPT">
+<link rel="manifest" href='data:application/manifest+json,{"name":"MORSE LINK","short_name":"MORSE LINK","start_url":"./","display":"standalone","background_color":"#10131a","theme_color":"#10131a","description":"Komunikator Morse&#39;a z ChatGPT"}'>
+<title>MORSE LINK AI</title>
+<style>
+:root{color-scheme:dark;--bg:#10131a;--panel:#1b202b;--line:#30394a;--muted:#9ca7b8}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:#f4f6fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+body{min-height:100dvh;overscroll-behavior:none}
+button{font:inherit;border:1px solid var(--line);background:#293244;color:white;border-radius:12px;padding:13px 15px;cursor:pointer;touch-action:manipulation}
+button:disabled{opacity:.45}
+.primary{background:#dce6ff;color:#111827;border-color:#dce6ff;font-weight:750}
+.app{max-width:720px;margin:auto;min-height:100dvh;padding:18px;display:flex;flex-direction:column;gap:14px;justify-content:center}
+header{display:flex;align-items:center;justify-content:space-between}
+h1{font-size:19px;letter-spacing:.14em;margin:0}
+.tag{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:5px 9px;border-radius:99px}
+.status{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:12px;display:flex;gap:9px;align-items:center;font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:#e6b76c;flex:none}.dot.on{background:#8ee0b0}.dot.bad{background:#ff8f8f}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;display:grid;gap:10px}
+.help{font-size:12px;line-height:1.5;color:var(--muted)}
+#setupLog{font-size:12px;color:var(--muted);min-height:18px;overflow-wrap:anywhere}
+
+/* Tryb radiowy z panelem nadawania */
+#radio{display:none;min-height:100dvh;min-height:100svh;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;position:fixed;inset:0;background:radial-gradient(ellipse at center,#202a3d 0,#10131a 72%);align-items:center;justify-content:flex-start;flex-direction:column;gap:18px;padding:20px;padding-top:calc(env(safe-area-inset-top) + 50px);padding-bottom:env(safe-area-inset-bottom)}
+#radio.show{display:flex}
+
+/* Górny pasek z Backspace i Wyślij w lewym rogu */
+#topToolbar{position:absolute;top:env(safe-area-inset-top,15px);left:15px;display:flex;gap:8px;z-index:30}
+#topToolbar button{padding:9px 14px;font-size:13px;border-radius:11px;background:#1e2636;font-weight:600}
+#topToolbar button.send-btn{background:#dce6ff;color:#111827;border-color:#dce6ff}
+
+/* Spłaszczony i przesunięty wyżej przycisk nadawania */
+#pad{width:min(84vw,340px);height:140px;border-radius:26px;border:1px solid #5a6b8a;background:linear-gradient(145deg,#28354c,#172030);box-shadow:0 10px 30px #0008,inset 0 1px 6px #ffffff1f;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;margin-top:10px}
+#pad.active{background:linear-gradient(145deg,#3c4d6c,#202c40);transform:scale(0.98);box-shadow:0 4px 12px #000a}
+#pad strong{font-size:clamp(18px,4.5vw,24px);letter-spacing:.15em}
+#pad span{font-size:11px;color:#abb7cc}
+
+#radioStatus{font-size:12px;color:#aab5c8;text-align:center;letter-spacing:.1em;margin-top:5px}
+#codeView{font:16px ui-monospace,monospace;letter-spacing:.12em;min-height:28px;color:#e5ecfa;text-align:center;overflow-wrap:anywhere;max-width:92vw;padding:4px}
+#radioHint{font-size:11px;color:#77849b;text-align:center}
+</style>
+</head>
+<body>
+<div class="app" id="setup">
+  <header><h1>MORSE LINK</h1><span class="tag">CHAT MODE</span></header>
+  <div class="status"><span id="dot" class="dot"></span><span id="status">Łączę z serwerem…</span></div>
+  <section class="panel">
+    <strong>Łączenie z ChatGPT przez Morse'a</strong>
+    <div id="setupLog">Sprawdzam połączenie ze Socket.IO. Zaraz odpali się panel nadawania.</div>
+    <button id="vibrate">Test wibracji</button>
+  </section>
+</div>
+
+<div id="radio">
+  <div id="topToolbar">
+    <button id="backspace" title="Skasuj ostatnią literę">⌫</button>
+    <button id="send" class="send-btn" title="Wyślij wiadomość do GPT">✈️ Wyślij</button>
+  </div>
+
+  <div id="radioStatus" style="margin-top:24px">GOTOWY · NADAWAJ MORSEM</div>
+  
+  <button id="pad" aria-label="Krótko naciśnij dla kropki, przytrzymaj dla kreski. Przytrzymaj 7 sekund dla pełnego ekranu.">
+    <strong>NADAJ</strong><span>krótko · / długo — (przytrzymaj 7s = pełny ekran)</span>
+  </button>
+  
+  <div id="codeView">TX — &nbsp; / &nbsp; RX —</div>
+  <div id="radioHint">0.85s ciszy = koniec litery · 1.9s = spacja · Kliknij „Wyślij” u góry</div>
+</div>
+
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900;
+// Pamiętaj: Jeśli testujesz lokalnie, podmień poniższy URL na dokładny adres swojego serwera na Renderze!
+const BACKEND_URL=location.hostname.endsWith('.onrender.com')?location.origin:'https://letter-scroll.onrender.com';
+
+const MORSE_TO_CHAR = {
+  ".-":"A","-...":"B","-.-.":"C","-..":"D",".":"E","..-.":"F","--.":"G",
+  "....":"H","..":"I",".---":"J","-.-":"K",".-..":"L","--":"M","-.":"N",
+  "---":"O",".--.":"P","--.-":"Q",".-.":"R","...":"S","-":"T","..-":"U",
+  "...-":"V",".--":"W","-..-":"X","-.--":"Y","--..":"Z",
+  "-----":"0",".----":"1","..---":"2","...--":"3","....-":"4",
+  ".....":"5","-....":"6","--...":"7","---..":"8","----.":"9"
+};
+
+let socket=null,pressAt=0;
+let txLetter='';         
+let txLetterCodes=[];    
+let rxDisplay='—';
+let txTimer=null,wordTimer=null,fullscreenTimer=null;
+let vibrationQueue=Promise.resolve();
+
+const setStatus=(s,k='')=>{$('status').textContent=s;$('dot').className='dot '+k};
+const log=s=>$('setupLog').textContent=s;
+const setRadioStatus=s=>$('radioStatus').textContent=s;
+
+function showRadio(){
+ $('setup').style.display='none';
+ $('radio').classList.add('show');
+ setRadioStatus('GOTOWY · NADAWAJ MORSEM');
+}
+
+function wakeUpBackend(){
+ fetch(BACKEND_URL+'/health',{mode:'cors',cache:'no-store'}).catch(()=>{});
+}
+
+function getTxTextPreview(){
+ let text='';
+ for(const item of txLetterCodes){
+  if(item==='/') text+=' ';
+  else text+=(MORSE_TO_CHAR[item]||'?');
+ }
+ if(txLetter){
+  text+='['+txLetter+']';
+ }
+ return text||'—';
+}
+
+function renderCode(){
+ $('codeView').textContent='TX '+getTxTextPreview()+'   /   RX '+rxDisplay;
+}
+
+function vibrate(ms){
+ if(!navigator.vibrate)return;
+ vibrationQueue=vibrationQueue.then(()=>new Promise(resolve=>{
+  navigator.vibrate(ms);
+  setTimeout(resolve,ms+130);
+ })).catch(()=>{});
+}
+
+function playWholeReply(packet){
+ if(!packet||!Array.isArray(packet.signals))return;
+ rxDisplay=packet.replyText||'—';
+ renderCode();
+ setRadioStatus('GPT: '+(packet.replyText||''));
+
+ for(const sig of packet.signals){
+  if(sig.type==='symbol'&&(sig.symbol==='.'||sig.symbol==='-')){
+   vibrate(sig.symbol==='.'?110:330);
+  }else if(sig.type==='letter_end'){
+   vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,330)));
+  }else if(sig.type==='word_end'){
+   vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,770)));
+  }
+ }
+ vibrationQueue=vibrationQueue.then(()=>{
+  setRadioStatus('GOTOWY · NADAWAJ MORSEM');
+ });
+}
+
+function flushLetter(){
+ if(!txLetter)return;
+ txLetterCodes.push(txLetter);
+ txLetter='';
+ renderCode();
+}
+
+function handleBackspace(){
+ if(txLetter.length>0){
+  txLetter=txLetter.slice(0,-1);
+ }else if(txLetterCodes.length>0){
+  txLetterCodes.pop();
+  if(txLetterCodes[txLetterCodes.length-1]==='/'){
+   txLetterCodes.pop();
+  }
+ }
+ renderCode();
+}
+
+function handleSend(){
+ if(txLetter){
+  txLetterCodes.push(txLetter);
+  txLetter='';
+ }
+ while(txLetterCodes.length>0&&txLetterCodes[txLetterCodes.length-1]==='/'){
+  txLetterCodes.pop();
+ }
+ const finalMorse=txLetterCodes.join(' ');
+ txLetterCodes=[];
+ renderCode();
+
+ if(!finalMorse||!socket||!socket.connected){
+  setRadioStatus('PUSTA WIADOMOŚĆ');
+  return;
+ }
+
+ setRadioStatus('WYSYŁAM DO GPT…');
+ socket.emit('morse_message',{morse:finalMorse},res=>{
+  if(!res?.ok){
+   setRadioStatus(res?.error||'BŁĄD WYSYŁANIA');
+   return;
+  }
+  setRadioStatus('WYSŁANO ('+res.decodedText+') · CZEKAM NA GPT…');
+ });
+}
+
+function startPress(){
+ if(pressAt)return;
+ pressAt=performance.now();
+ $('pad').classList.add('active');
+ clearTimeout(txTimer);
+ clearTimeout(wordTimer);
+
+ fullscreenTimer=setTimeout(async()=>{
+  try{
+   if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
+   else await document.exitFullscreen();
+   if(navigator.vibrate)navigator.vibrate([100,50,100]);
+   setRadioStatus('PEŁNY EKRAN PRZEŁĄCZONY');
+  }catch(_){}
+ },7000);
+}
+
+function endPress(){
+ if(!pressAt)return;
+ const duration=performance.now()-pressAt;
+ pressAt=0;
+ $('pad').classList.remove('active');
+
+ if(fullscreenTimer){
+  clearTimeout(fullscreenTimer);
+  fullscreenTimer=null;
+ }
+
+ const symbol=duration>=DOT_DASH_MS?'-':'.';
+ txLetter+=symbol;
+ renderCode();
+ setRadioStatus('PISZENIE…');
+
+ clearTimeout(txTimer);
+ clearTimeout(wordTimer);
+
+ txTimer=setTimeout(()=>{
+  flushLetter();
+ },LETTER_GAP_MS);
+
+ wordTimer=setTimeout(()=>{
+  flushLetter();
+  if(txLetterCodes.length&&txLetterCodes[txLetterCodes.length-1]!=='/'){
+   txLetterCodes.push('/');
+   renderCode();
+  }
+ },WORD_GAP_MS);
+}
+
+function init(){
+ if(!window.io){
+  setStatus('Brak Socket.IO. Odśwież stronę.','bad');
+  return;
+ }
+ wakeUpBackend();
+ socket=io(BACKEND_URL,{
+  autoConnect:true,
+  transports:['polling','websocket'],
+  reconnection:true,
+  reconnectionAttempts:Infinity,
+  reconnectionDelay:1000,
+  reconnectionDelayMax:5000,
+  timeout:20000
+ });
+
+ socket.on('connect',()=>{
+  setStatus('Serwer online · połączono','on');
+  showRadio();
+ });
+
+ socket.on('connect_error',()=>{
+  wakeUpBackend();
+  setStatus('Problem z połączeniem socket, ponawiam…','');
+ });
+
+ socket.on('disconnect',()=>{
+  setStatus('Rozłączono · ponawiam…','bad');
+  setRadioStatus('ROZŁĄCZONO · ŁĄCZENIE...');
+ });
+
+ socket.on('morse_reply',playWholeReply);
+}
+
+$('backspace').addEventListener('click',handleBackspace);
+$('send').addEventListener('click',handleSend);
+
+$('vibrate').addEventListener('click',()=>{
+ if(navigator.vibrate)navigator.vibrate([110,120,330,120,110]);
+ else log('Vibrations not supported');
+});
+
+const pad=$('pad');
+pad.addEventListener('pointerdown',e=>{e.preventDefault();try{pad.setPointerCapture(e.pointerId);}catch(_){}startPress();});
+pad.addEventListener('pointerup',e=>{e.preventDefault();endPress();});
+pad.addEventListener('pointercancel',()=>{
+ if(fullscreenTimer)clearTimeout(fullscreenTimer);
+ endPress();
+});
+pad.addEventListener('contextmenu',e=>e.preventDefault());
+
+document.addEventListener('keydown',e=>{
+ if(e.code==='Space'&&!e.repeat&&$('radio').classList.contains('show')){
+  e.preventDefault();
+  startPress();
+ }
+});
+document.addEventListener('keyup',e=>{
+ if(e.code==='Space')endPress();
+});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('touchmove',e=>{if($('radio').classList.contains('show'))e.preventDefault();},{passive:false});
+
+if('serviceWorker'in navigator){navigator.serviceWorker.getRegistrations().then(r=>r.forEach(reg=>reg.unregister())).catch(()=>{});}
+init();
+})();
+</script>
+</body>
+</html>
