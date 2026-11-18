@@ -78,36 +78,51 @@ input:focus{border-color:#91a8d7}
 'use strict';
 const $=id=>document.getElementById(id);
 const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900;
+const BACKEND_URL=location.hostname.endsWith('.onrender.com')?location.origin:'https://letter-scroll.onrender.com';
 let socket=null,room='',pressAt=0,txLetter='',txTimer=null,wordTimer=null,rxLetter='',vibrationQueue=Promise.resolve(),pendingAction=null;
 const setStatus=(s,k='')=>{$('status').textContent=s;$('dot').className='dot '+k};
 const log=s=>$('setupLog').textContent=s;
 const setRadioStatus=s=>$('radioStatus').textContent=s;
 const isConnected=()=>!!(socket&&socket.connected&&room);
 function showRadio(){ $('setup').style.display='none';$('radio').classList.add('show');setRadioStatus('POŁĄCZONO · POKÓJ '+room); }
+function wakeUpBackend(){
+ fetch(BACKEND_URL+'/health',{mode:'cors',cache:'no-store'}).catch(()=>{});
+}
 function init(){
  if(!window.io){setStatus('Nie załadowano biblioteki połączenia. Sprawdź internet i odśwież stronę.','bad');return;}
- // Klient Socket.IO ładuje się z CDN, więc nie musi czekać na wybudzenie Rendera.
- // Połączenie z Renderem rozpoczynamy dopiero po kliknięciu Utwórz/Dołącz.
- socket=io('https://letter-scroll.onrender.com',{
+ socket=io(BACKEND_URL,{
   autoConnect:false,
-  transports:['websocket','polling'],
+  transports:['polling','websocket'],
   reconnection:true,
   reconnectionAttempts:Infinity,
   reconnectionDelay:1000,
   reconnectionDelayMax:5000,
-  timeout:120000
+  timeout:20000
  });
  socket.on('connect',()=>{
   setStatus('Serwer online · gotowy','on');
-  const action=pendingAction;pendingAction=null;
   $('create').disabled=false;$('join').disabled=false;
-  if(action)action();
+  const action=pendingAction;pendingAction=null;
+  if(action){
+   action();
+  }else if(room){
+   socket.emit('rejoin_room',room,res=>{
+    if(!res?.ok){log(res?.error||'Utracono pokój. Utwórz nowy.');return;}
+    if(res.peers>=2){
+     setStatus('Połączono z pokojem '+room,'on');
+     showRadio();
+    }else{
+     setStatus('Pokój '+room+' aktywny · czekam na drugie urządzenie','on');
+    }
+   });
+  }
  });
  socket.on('connect_error',()=>{
+  wakeUpBackend();
   setStatus('Render uruchamia serwer… ponawiam próbę połączenia','');
   log('Czekaj — pierwsze uruchomienie może potrwać około 50 sekund. Nie zamykaj strony.');
  });
- socket.on('disconnect',()=>{setStatus('Utracono połączenie · próbuję ponownie','bad');setRadioStatus('ROZŁĄCZONO');});
+ socket.on('disconnect',()=>{setStatus('Utracono połączenie · próbuję ponownie','bad');setRadioStatus('ROZŁĄCZONO · ŁĄCZENIE...');});
  socket.on('peer_joined',()=>{setStatus('Drugie urządzenie dołączyło','on');showRadio();});
  socket.on('peer_left',()=>{setRadioStatus('DRUGIE URZĄDZENIE ROZŁĄCZONE');setStatus('Drugie urządzenie rozłączone','bad');});
  socket.on('morse_signal',receiveSignal);
@@ -119,6 +134,7 @@ function connectThen(action){
  $('create').disabled=true;$('join').disabled=true;
  setStatus('Uruchamiam serwer Render… poczekaj około 50 sekund','');
  log('Render może usypiać serwer po bezczynności. Trwa wybudzanie — nie zamykaj strony.');
+ wakeUpBackend();
  socket.connect();
 }
 function createRoom(){
