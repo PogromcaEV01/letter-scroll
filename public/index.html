@@ -46,7 +46,7 @@ input:focus{border-color:#91a8d7}
 <body>
 <div class="app" id="setup">
 <header><h1>MORSE LINK</h1><span class="tag">BETA 0.2</span></header>
-<div class="status"><span id="dot" class="dot"></span><span id="status">Łączenie z serwerem…</span></div>
+<div class="status"><span id="dot" class="dot"></span><span id="status">Gotowy · serwer uruchomi się po kliknięciu</span></div>
 <section class="panel">
   <strong>Połącz telefon z komputerem</strong>
   <button id="create" class="primary">Utwórz pokój</button>
@@ -78,37 +78,62 @@ input:focus{border-color:#91a8d7}
 'use strict';
 const $=id=>document.getElementById(id);
 const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900;
-let socket=null,room='',pressAt=0,txLetter='',txTimer=null,wordTimer=null,rxLetter='',vibrationQueue=Promise.resolve();
+let socket=null,room='',pressAt=0,txLetter='',txTimer=null,wordTimer=null,rxLetter='',vibrationQueue=Promise.resolve(),pendingAction=null;
 const setStatus=(s,k='')=>{$('status').textContent=s;$('dot').className='dot '+k};
 const log=s=>$('setupLog').textContent=s;
 const setRadioStatus=s=>$('radioStatus').textContent=s;
 const isConnected=()=>!!(socket&&socket.connected&&room);
 function showRadio(){ $('setup').style.display='none';$('radio').classList.add('show');setRadioStatus('POŁĄCZONO · POKÓJ '+room); }
 function init(){
- if(!window.io){setStatus('Nie załadowano Socket.IO. Odśwież stronę.','bad');return;}
- socket=io({transports:['websocket','polling'],reconnection:true,timeout:15000});
- socket.on('connect',()=>setStatus('Serwer online · gotowy do połączenia','on'));
- socket.on('connect_error',()=>setStatus('Nie można połączyć się z serwerem','bad'));
- socket.on('disconnect',()=>{setStatus('Utracono połączenie z serwerem','bad');setRadioStatus('ROZŁĄCZONO');});
+ if(!window.io){setStatus('Nie załadowano biblioteki połączenia. Sprawdź internet i odśwież stronę.','bad');return;}
+ // Klient Socket.IO ładuje się z CDN, więc nie musi czekać na wybudzenie Rendera.
+ // Połączenie z Renderem rozpoczynamy dopiero po kliknięciu Utwórz/Dołącz.
+ socket=io('https://letter-scroll.onrender.com',{
+  autoConnect:false,
+  transports:['websocket','polling'],
+  reconnection:true,
+  reconnectionAttempts:Infinity,
+  reconnectionDelay:1000,
+  reconnectionDelayMax:5000,
+  timeout:120000
+ });
+ socket.on('connect',()=>{
+  setStatus('Serwer online · gotowy','on');
+  const action=pendingAction;pendingAction=null;
+  $('create').disabled=false;$('join').disabled=false;
+  if(action)action();
+ });
+ socket.on('connect_error',()=>{
+  setStatus('Render uruchamia serwer… ponawiam próbę połączenia','');
+  log('Czekaj — pierwsze uruchomienie może potrwać około 50 sekund. Nie zamykaj strony.');
+ });
+ socket.on('disconnect',()=>{setStatus('Utracono połączenie · próbuję ponownie','bad');setRadioStatus('ROZŁĄCZONO');});
  socket.on('peer_joined',()=>{setStatus('Drugie urządzenie dołączyło','on');showRadio();});
  socket.on('peer_left',()=>{setRadioStatus('DRUGIE URZĄDZENIE ROZŁĄCZONE');setStatus('Drugie urządzenie rozłączone','bad');});
  socket.on('morse_signal',receiveSignal);
 }
+function connectThen(action){
+ if(!socket){setStatus('Nie można uruchomić klienta połączenia','bad');return;}
+ if(socket.connected){action();return;}
+ pendingAction=action;
+ $('create').disabled=true;$('join').disabled=true;
+ setStatus('Uruchamiam serwer Render… poczekaj około 50 sekund','');
+ log('Render może usypiać serwer po bezczynności. Trwa wybudzanie — nie zamykaj strony.');
+ socket.connect();
+}
 function createRoom(){
- if(!socket?.connected){setStatus('Serwer nie jest dostępny','bad');return;}
- socket.emit('create_room',{},res=>{
+ connectThen(()=>socket.emit('create_room',{},res=>{
   if(!res?.ok){log(res?.error||'Nie udało się utworzyć pokoju.');return;}
   room=res.code;$('roomCode').value=room;log('Twój kod: '+room+'. Wpisz go na drugim urządzeniu.');setStatus('Pokój utworzony · czekam na drugie urządzenie','on');
- });
+ }));
 }
 function joinRoom(){
- if(!socket?.connected){setStatus('Serwer nie jest dostępny','bad');return;}
  const code=$('roomCode').value.replace(/\D/g,'').slice(0,6);
  if(code.length!==6){log('Kod musi mieć 6 cyfr.');return;}
- socket.emit('join_room',code,res=>{
+ connectThen(()=>socket.emit('join_room',code,res=>{
   if(!res?.ok){log(res?.error||'Nie udało się dołączyć.');return;}
   room=res.code;setStatus('Połączono z pokojem '+room,'on');showRadio();
- });
+ }));
 }
 function send(payload){if(isConnected())socket.emit('morse_signal',payload);}
 function startPress(){if(pressAt)return;pressAt=performance.now();$('pad').classList.add('active');}
