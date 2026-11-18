@@ -106,11 +106,11 @@ async function askChatGPT(userText) {
         {
           role: "system",
           content:
-            "Odpowiadaj po polsku, ale krótko (maksymalnie jedno dwuczęściowe zdanie), bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
+            "Odpowiadaj po polsku, ale maksymalnie w jednym dużym zdaniu, bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
         },
         { role: "user", content: userText }
       ],
-      max_tokens: 500,
+      max_tokens: 100,
       temperature: 0.5
     })
   });
