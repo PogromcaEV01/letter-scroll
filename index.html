@@ -24,17 +24,24 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;display:grid;gap:10px}
 .help{font-size:12px;line-height:1.5;color:var(--muted)}
 #setupLog{font-size:12px;color:var(--muted);min-height:18px;overflow-wrap:anywhere}
-#radio{display:none;min-height:100dvh;min-height:100svh;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;position:fixed;inset:0;background:radial-gradient(ellipse at center,#202a3d 0,#10131a 72%);align-items:center;justify-content:center;flex-direction:column;gap:22px;padding:20px;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+
+#radio{display:none;min-height:100dvh;min-height:100svh;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;position:fixed;inset:0;background:radial-gradient(ellipse at center,#202a3d 0,#10131a 72%);align-items:center;justify-content:flex-start;flex-direction:column;gap:18px;padding:24px 20px;padding-top:calc(env(safe-area-inset-top) + 54px);padding-bottom:env(safe-area-inset-bottom)}
 #radio.show{display:flex}
-#pad{width:min(74vw,360px);height:min(74vw,360px);max-width:360px;max-height:360px;border-radius:50%;border:2px solid #8394b5;background:radial-gradient(circle at 35% 28%,#465675,#26344d 68%,#182131);box-shadow:0 18px 65px #0009,inset 0 2px 18px #ffffff14;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* Top-left action buttons & status */
+#topBar{position:absolute;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;z-index:10}
+.topLeftActions{display:flex;gap:8px}
+.topBtn{font-size:12px;padding:8px 12px;border-radius:10px}
+
+/* Flatter pad moved higher */
+#pad{width:100%;max-width:420px;height:140px;border-radius:22px;border:2px solid #8394b5;background:radial-gradient(circle at 35% 28%,#465675,#26344d 68%,#182131);box-shadow:0 14px 45px #0009,inset 0 2px 14px #ffffff14;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;margin-top:10px}
 #pad.active{background:radial-gradient(circle at 35% 28%,#7188b1,#394f70 70%,#263650);transform:scale(.985)}
-#pad strong{font-size:clamp(20px,5vw,28px);letter-spacing:.15em}
-#pad span{font-size:12px;color:#c5d0e5}
-#radioStatus{font-size:12px;color:#aab5c8;text-align:center;letter-spacing:.1em}
-#codeView{font:16px ui-monospace,monospace;letter-spacing:.12em;min-height:24px;color:#e5ecfa;text-align:center;overflow-wrap:anywhere;max-width:90vw}
-#radioHint{font-size:11px;color:#77849b;text-align:center}
-#radioActions{display:flex;gap:8px}
-#radioActions button{font-size:12px;padding:9px 12px}
+#pad strong{font-size:clamp(18px,4vw,24px);letter-spacing:.15em}
+#pad span{font-size:11px;color:#c5d0e5}
+
+#radioStatus{font-size:12px;color:#aab5c8;text-align:center;letter-spacing:.1em;margin-top:4px}
+#codeView{font:16px ui-monospace,monospace;letter-spacing:.12em;min-height:32px;color:#e5ecfa;text-align:center;overflow-wrap:anywhere;max-width:92vw;background:#131722;border:1px solid var(--line);border-radius:12px;padding:12px;width:100%;max-width:420px}
+#radioHint{font-size:11px;color:#77849b;text-align:center;max-width:380px;line-height:1.4}
 </style>
 </head>
 <body>
@@ -49,13 +56,22 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 </div>
 
 <div id="radio">
-  <div id="radioStatus">POŁĄCZONO Z SERWEREM · NADAWAJ</div>
+  <div id="topBar">
+    <div class="topLeftActions">
+      <button id="sendBtn" class="primary topBtn">WYŚLIJ 🚀</button>
+      <button id="backspaceBtn" class="topBtn">⌫</button>
+    </div>
+    <span class="tag" style="font-size:10px;">PRZYTRZYMAJ 7S = FULLSCREEN</span>
+  </div>
+
+  <div id="radioStatus" style="margin-top: 10px;">GOTOWY · NADAWAJ MORSEM</div>
+  
   <button id="pad" aria-label="Krótko naciśnij dla kropki, przytrzymaj dla kreski">
-    <strong>NADAJ</strong><span>krótko · / długo —</span>
+    <strong>NADAJ</strong><span>krótko · / długo — (Przytrzymaj 7s = Pełny ekran)</span>
   </button>
-  <div id="codeView">TX — &nbsp; / &nbsp; RX —</div>
-  <div id="radioHint">0.85s ciszy = koniec litery · 1.9s = spacja · 3.5s = wyślij do GPT</div>
-  <div id="radioActions"><button id="fullscreen">Pełny ekran</button></div>
+
+  <div id="codeView">TX: — &nbsp;|&nbsp; RX: —</div>
+  <div id="radioHint">0.85s ciszy = koniec litery &nbsp;·&nbsp; 1.9s = spacja<br>Kliknij „WYŚLIJ”, żeby przekazać wiadomość do ChatGPT.</div>
 </div>
 
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
@@ -63,12 +79,22 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900,SEND_GAP_MS=3500;
+const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900;
 const BACKEND_URL=location.hostname.endsWith('.onrender.com')?location.origin:'https://letter-scroll.onrender.com';
 
-let socket=null,pressAt=0;
-let txLetter='',txWords=[], rxDisplay='';
-let txTimer=null,wordTimer=null,sendTimer=null;
+const MORSE_TO_CHAR = {
+  ".-":"A","-...":"B","-.-.":"C","-..":"D",".":"E","..-.":"F","--.":"G",
+  "....":"H","..":"I",".---":"J","-.-":"K",".-..":"L","--":"M","-.":"N",
+  "---":"O",".--.":"P","--.-":"Q",".-.":"R","...":"S","-":"T","..-":"U",
+  "...-":"V",".--":"W","-..-":"X","-.--":"Y","--..":"Z",
+  "-----":"0",".----":"1","..---":"2","...--":"3","....-":"4",
+  ".....":"5","-....":"6","--...":"7","---..":"8","----.":"9"
+};
+
+let socket=null, pressAt=0, fullscreenTimer=null, isFullScreenTriggered=false;
+let txLetter='', txWords=[];
+let txTimer=null, wordTimer=null;
+let rxDisplay='—';
 let vibrationQueue=Promise.resolve();
 
 const setStatus=(s,k='')=>{$('status').textContent=s;$('dot').className='dot '+k};
@@ -85,14 +111,15 @@ function wakeUpBackend(){
  fetch(BACKEND_URL+'/health',{mode:'cors',cache:'no-store'}).catch(()=>{});
 }
 
-function currentTxString(){
+function getTypedText(){
  const parts=[...txWords];
  if(txLetter)parts.push(txLetter);
- return parts.join(' ');
+ return parts.map(p=>p==='/'?' ': (MORSE_TO_CHAR[p]||p)).join('');
 }
 
 function renderCode(){
- $('codeView').textContent='TX '+(currentTxString()||'—')+'   /   RX '+(rxDisplay||'—');
+ const currentText = getTypedText() || '—';
+ $('codeView').textContent='TX: ' + currentText + '   |   RX: ' + rxDisplay;
 }
 
 function vibrate(ms){
@@ -105,7 +132,7 @@ function vibrate(ms){
 
 function playWholeReply(packet){
  if(!packet||!Array.isArray(packet.signals))return;
- rxDisplay=packet.replyMorse||'—';
+ rxDisplay=packet.replyText||'—';
  renderCode();
  setRadioStatus('GPT ODPOWIADA: '+(packet.replyText||''));
 
@@ -131,22 +158,47 @@ function flushLetter(){
  renderCode();
 }
 
-function flushMessageToServer(){
+function doBackspace(){
+ if(txLetter.length>0){
+  txLetter=txLetter.slice(0,-1);
+ }else if(txWords.length>0){
+  txWords.pop();
+ }
+ renderCode();
+}
+
+function sendCurrentMessage(){
  flushLetter();
- while(txWords[txWords.length-1]==='/')txWords.pop();
- const finalMorse=txWords.join(' ').trim();
+ while(txWords.length && txWords[txWords.length-1]==='/') txWords.pop();
+ 
+ // Składamy surowy morse z aktualnych słów do wysyłki na serwer
+ const rawMorseParts=[];
+ for(const item of txWords){
+  if(item==='/'){ rawMorseParts.push('/'); }
+  else {
+    // znajdź kod morse dla litery
+    const morseCode = Object.entries(MORSE_TO_CHAR).find(([k,v])=>v===item)?.[0];
+    if(morseCode) rawMorseParts.push(morseCode);
+  }
+ }
+ const finalMorse=rawMorseParts.join(' ');
+ 
  txWords=[];
+ txLetter='';
  renderCode();
 
- if(!finalMorse||!socket||!socket.connected)return;
+ if(!finalMorse || !socket || !socket.connected){
+  setRadioStatus('PUSTA WIADOMOŚĆ LUB BRAK SIECI');
+  return;
+ }
 
- setRadioStatus('WYSYŁAM DO SERWERA…');
+ setRadioStatus('WYSYŁAM DO CHATGPT…');
  socket.emit('morse_message',{morse:finalMorse},res=>{
   if(!res?.ok){
-   setRadioStatus(res?.error||'NIE ROZPOZNANO KODU');
+   setRadioStatus(res?.error||'BŁĄD WYSYŁANIA');
    return;
   }
-  setRadioStatus('WYSŁANO ('+res.decodedText+') · CZEKAM NA GPT…');
+  setRadioStatus('WYSŁANO ('+res.decodedText+') · CZEKAM NA AI…');
  });
 }
 
@@ -156,48 +208,57 @@ function startPress(){
  $('pad').classList.add('active');
  clearTimeout(txTimer);
  clearTimeout(wordTimer);
- clearTimeout(sendTimer);
+
+ // Timer na 7 sekund przytrzymania w celu włączenia/wyłączenia pełnego ekranu
+ fullscreenTimer=setTimeout(async()=>{
+  isFullScreenTriggered=true;
+  pressAt=0;
+  $('pad').classList.remove('active');
+  try{
+   if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+   else await document.exitFullscreen();
+  }catch(_){}
+ }, 7000);
 }
 
 function endPress(){
  if(!pressAt)return;
+ clearTimeout(fullscreenTimer);
  const duration=performance.now()-pressAt;
  pressAt=0;
  $('pad').classList.remove('active');
 
+ if(isFullScreenTriggered){
+  isFullScreenTriggered=false;
+  return;
+ }
+
  const symbol=duration>=DOT_DASH_MS?'-':'.';
  txLetter+=symbol;
- rxDisplay='';
  renderCode();
- setRadioStatus('NADAWANIE…');
+ setRadioStatus('PISZESZ…');
 
  clearTimeout(txTimer);
  clearTimeout(wordTimer);
- clearTimeout(sendTimer);
 
- // Koniec litery po 850 ms
+ // Koniec litery po 850ms ciszy
  txTimer=setTimeout(()=>{
   flushLetter();
  },LETTER_GAP_MS);
 
- // Spacja między słowami po 1900 ms
+ // Spacja / nowe słowo po 1900ms ciszy
  wordTimer=setTimeout(()=>{
   flushLetter();
-  if(txWords.length&&txWords[txWords.length-1]!=='/'){
+  if(txWords.length && txWords[txWords.length-1]!=='/'){
    txWords.push('/');
    renderCode();
   }
  },WORD_GAP_MS);
-
- // Koniec całej wiadomości i wysyłka na serwer po 3500 ms
- sendTimer=setTimeout(()=>{
-  flushMessageToServer();
- },SEND_GAP_MS);
 }
 
 function init(){
  if(!window.io){
-  setStatus('Nie załadowano Socket.IO. Sprawdź internet i odśwież.','bad');
+  setStatus('Brak biblioteki Socket.IO. Odśwież stronę.','bad');
   return;
  }
  wakeUpBackend();
@@ -229,17 +290,12 @@ function init(){
  socket.on('morse_reply',playWholeReply);
 }
 
+$('sendBtn').addEventListener('click', sendCurrentMessage);
+$('backspaceBtn').addEventListener('click', doBackspace);
+
 $('vibrate').addEventListener('click',()=>{
  if(navigator.vibrate)navigator.vibrate([110,120,330,120,110]);
  else log('Vibration API niedostępne w tej przeglądarce.');
-});
-$('fullscreen').addEventListener('click',async()=>{
- try{
-  if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
-  else await document.exitFullscreen();
- }catch(_){
-  setRadioStatus('Pełny ekran uruchom z menu przeglądarki.');
- }
 });
 
 const pad=$('pad');
@@ -247,10 +303,17 @@ pad.addEventListener('pointerdown',e=>{e.preventDefault();try{pad.setPointerCapt
 pad.addEventListener('pointerup',e=>{e.preventDefault();endPress();});
 pad.addEventListener('pointercancel',endPress);
 pad.addEventListener('contextmenu',e=>e.preventDefault());
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&$('radio').classList.contains('show')){e.preventDefault();startPress();}});
+
+document.addEventListener('keydown',e=>{
+ if(e.code==='Space'&&!e.repeat&&$('radio').classList.contains('show')){
+  e.preventDefault();
+  startPress();
+ }
+});
 document.addEventListener('keyup',e=>{if(e.code==='Space')endPress();});
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>{if($('radio').classList.contains('show'))e.preventDefault();},{passive:false});
+
 if('serviceWorker'in navigator){navigator.serviceWorker.getRegistrations().then(r=>r.forEach(reg=>reg.unregister())).catch(()=>{});}
 init();
 })();
