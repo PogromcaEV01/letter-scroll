@@ -23,17 +23,17 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 .dot{width:9px;height:9px;border-radius:50%;background:#e6b76c;flex:none}.dot.on{background:#8ee0b0}.dot.bad{background:#ff8f8f}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;display:grid;gap:10px}
 .row{display:flex;gap:8px;flex-wrap:wrap}
-.row button{flex:1;min-width:120px}
+.row button{flex:1;min-width:140px}
 .help{font-size:12px;line-height:1.5;color:var(--muted)}
 #setupLog{font-size:12px;color:var(--muted);min-height:18px;overflow-wrap:anywhere}
 
 /* Tryb radiowy z panelem nadawania */
-#radio{display:none;min-height:100dvh;min-height:100svh;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;position:fixed;inset:0;background:radial-gradient(ellipse at center,#202a3d 0,#10131a 72%);align-items:center;justify-content:flex-start;flex-direction:column;gap:18px;padding:20px;padding-top:calc(env(safe-area-inset-top) + 56px);padding-bottom:env(safe-area-inset-bottom)}
+#radio{display:none;min-height:100dvh;min-height:100svh;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;position:fixed;inset:0;background:radial-gradient(ellipse at center,#202a3d 0,#10131a 72%);align-items:center;justify-content:flex-start;flex-direction:column;gap:18px;padding:20px;padding-top:calc(env(safe-area-inset-top) + 50px);padding-bottom:env(safe-area-inset-bottom)}
 #radio.show{display:flex}
 
-/* Górny pasek z Backspace, Wyślij, DualSense i Mocą */
+/* Górny pasek z Backspace, Wyślij i DualSense */
 #topToolbar{position:absolute;top:env(safe-area-inset-top,15px);left:15px;right:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:30}
-#topToolbar button{padding:9px 12px;font-size:13px;border-radius:11px;background:#1e2636;font-weight:600}
+#topToolbar button{padding:9px 14px;font-size:13px;border-radius:11px;background:#1e2636;font-weight:600}
 #topToolbar button.send-btn{background:#dce6ff;color:#111827;border-color:#dce6ff}
 #topToolbar button.pad-on{border-color:#8ee0b0;color:#8ee0b0}
 
@@ -43,7 +43,7 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 #pad strong{font-size:clamp(18px,4.5vw,24px);letter-spacing:.15em}
 #pad span{font-size:11px;color:#abb7cc}
 
-#radioStatus{font-size:12px;color:#aab5c8;text-align:center;letter-spacing:.1em;margin-top:10px}
+#radioStatus{font-size:12px;color:#aab5c8;text-align:center;letter-spacing:.1em;margin-top:5px}
 #codeView{font:16px ui-monospace,monospace;letter-spacing:.12em;min-height:28px;color:#e5ecfa;text-align:center;overflow-wrap:anywhere;max-width:92vw;padding:4px}
 #radioHint{font-size:11px;color:#77849b;text-align:center}
 </style>
@@ -56,9 +56,8 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
     <strong>Łączenie z ChatGPT przez Morse'a</strong>
     <div id="setupLog">Sprawdzam połączenie ze Socket.IO. Zaraz odpali się panel nadawania.</div>
     <div class="row">
-      <button id="vibrate">Test · — ·</button>
+      <button id="vibrate">Test wibracji (· — ·)</button>
       <button id="connectPad">🎮 Połącz DualSense</button>
-      <button id="powerSetup">⚡ Moc: 40%</button>
     </div>
     <div class="help" id="padSetupInfo">Sparuj DualSense przez Bluetooth (PS + Create), a potem wciśnij dowolny przycisk na padzie (np. X), żeby przeglądarka go wykryła.</div>
   </section>
@@ -69,7 +68,6 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
     <button id="backspace" title="Skasuj ostatnią literę">⌫</button>
     <button id="send" class="send-btn" title="Wyślij wiadomość do GPT">✈️ Wyślij</button>
     <button id="padBtn" title="Połącz lub przetestuj kontroler DualSense">🎮 Pad</button>
-    <button id="powerBtn" title="Zmień moc wibracji pada (kliknij aby przetestować · —)">⚡ 40%</button>
   </div>
 
   <div id="radioStatus" style="margin-top:24px">GOTOWY · NADAWAJ MORSEM</div>
@@ -87,16 +85,13 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-
-// Nadawanie (TX)
 const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900;
 
-// Odbiór wibracyjny (RX) — wyraźny kontrast kropki vs kreski pod BT
-const RX_DOT_MS=95;       // krótki, ostry stuk
-const RX_DASH_MS=420;     // ponad 4x dłuższa, głęboka kreska
-const RX_SYMBOL_GAP=280;  // wyraźna cisza między znakami w literze
-const RX_LETTER_GAP=480;  // dodatkowa pauza po literze (łącznie ~760ms)
-const RX_WORD_GAP=950;    // dodatkowa pauza po słowie (łącznie ~1230ms)
+// Ustawienia wibracji (tylko słabszy silniczek pada + wyraźne czasy pod Morse'a)
+const PAD_WEAK_POWER=0.35; // 0.0 - 1.0 (tylko prawy/lekki silniczek; lewy/silny jest zawsze na 0)
+const RX_DOT_MS=90;
+const RX_DASH_MS=340;
+const RX_SYMBOL_GAP_MS=190;
 
 // Pamiętaj: Jeśli testujesz lokalnie, podmień poniższy URL na dokładny adres swojego serwera na Renderze!
 const BACKEND_URL=location.hostname.endsWith('.onrender.com')?location.origin:'https://letter-scroll.onrender.com';
@@ -120,25 +115,10 @@ let vibrationQueue=Promise.resolve();
 /* ================= DUALSENSE BT / GAMEPAD + WEBHID ================= */
 const SONY_VID=0x054c;
 const DUALSENSE_PIDS=[0x0ce6,0x0df2]; // DualSense + DualSense Edge
-const POWER_STEPS=[0.20,0.35,0.40,0.55,0.75,0.95];
-let powerIdx=2; // domyślnie 40%
-try{
- const saved=Number(localStorage.getItem('ds_power_idx'));
- if(Number.isInteger(saved)&&saved>=0&&saved<POWER_STEPS.length)powerIdx=saved;
-}catch(_){}
-
 let hidDevice=null;
 let hidIsBluetooth=true;
 let hidBtSeq=0;
-let padStopTimer=null;
-
-const getPadPower=()=>POWER_STEPS[powerIdx];
-
-function updatePowerUI(){
- const pct=Math.round(getPadPower()*100)+'%';
- $('powerBtn').textContent='⚡ '+pct;
- $('powerSetup').textContent='⚡ Moc: '+pct;
-}
+let hidStopTimer=null;
 
 // Tablica CRC-32 dla raportu Bluetooth 0x31 DualSense
 const CRC32_TABLE=(()=>{
@@ -153,6 +133,7 @@ const CRC32_TABLE=(()=>{
 
 function calcDualSenseCrc32(reportId,dataWithoutCrc){
  let crc=0xffffffff;
+ // Prefiks Sony BT HID Output (0xA2) + Report ID (0x31)
  crc=CRC32_TABLE[(crc^0xa2)&0xff]^(crc>>>8);
  crc=CRC32_TABLE[(crc^reportId)&0xff]^(crc>>>8);
  for(let i=0;i<dataWithoutCrc.length;i++){
@@ -161,26 +142,30 @@ function calcDualSenseCrc32(reportId,dataWithoutCrc){
  return (~crc)>>>0;
 }
 
-async function sendDualSenseHidRumble(left,right){
+async function sendDualSenseHidRumble(weakRight){
  if(!hidDevice||!hidDevice.opened)return false;
  try{
+  const right=weakRight&0xff;
+  const left=0; // ZAWSZE wyłączony silny/basowy silniczek
   if(hidIsBluetooth){
+   // Raport BT 0x31: 77 bajtów payloadu (+ 1 bajt reportId = 78 bajtów)
    const buf=new Uint8Array(77);
-   buf[0]=(hidBtSeq++&0x0f)<<4;
-   buf[1]=0x10;
-   buf[2]=0x03;
-   buf[3]=0x00;
-   buf[4]=right&0xff; // delikatny / wysoki
-   buf[5]=left&0xff;  // ciężki / basowy
+   buf[0]=(hidBtSeq++&0x0f)<<4; // seq_tag
+   buf[1]=0x10;                 // DS_OUTPUT_TAG
+   buf[2]=0x03;                 // valid_flag0: compatible vibration + haptics select
+   buf[3]=0x00;                 // valid_flag1
+   buf[4]=right;                // motor_right (lekki / wysokie częstotliwości)
+   buf[5]=left;                 // motor_left (silny - wyłączony)
    const crc=calcDualSenseCrc32(0x31,buf.subarray(0,73));
    new DataView(buf.buffer).setUint32(73,crc,true);
    await hidDevice.sendReport(0x31,buf);
   }else{
+   // Raport USB 0x02: 47 bajtów payloadu
    const buf=new Uint8Array(47);
    buf[0]=0x03;
    buf[1]=0x00;
-   buf[2]=right&0xff;
-   buf[3]=left&0xff;
+   buf[2]=right;                // motor_right (lekki)
+   buf[3]=left;                 // motor_left (silny - wyłączony)
    await hidDevice.sendReport(0x02,buf);
   }
   return true;
@@ -200,31 +185,21 @@ function getBestGamepad(){
  return pads.find(g=>/dualsense|054c|0ce6|0df2|wireless controller/i.test(g.id))||pads[0];
 }
 
-function stopDualSenseNow(){
+function rumbleDualSense(ms,weak=PAD_WEAK_POWER){
+ const safeWeak=Math.min(1,Math.max(0,weak));
+
+ // 1. Kanał WebHID (desktop BT/USB) — tylko lekki silniczek (prawy)
  if(hidDevice&&hidDevice.opened){
-  sendDualSenseHidRumble(0,0);
- }
- const gp=getBestGamepad();
- if(gp&&gp.vibrationActuator&&typeof gp.vibrationActuator.reset==='function'){
-  gp.vibrationActuator.reset().catch(()=>{});
- }
-}
-
-function rumbleDualSense(ms,strongNorm,weakNorm){
- const clamp=v=>Math.min(1,Math.max(0,v));
- const strong=clamp(strongNorm);
- const weak=clamp(weakNorm);
-
- clearTimeout(padStopTimer);
- padStopTimer=setTimeout(stopDualSenseNow,ms);
-
- // 1. WebHID (PC Chrome/Edge BT/USB)
- if(hidDevice&&hidDevice.opened){
-  sendDualSenseHidRumble(Math.round(strong*255),Math.round(weak*255));
+  clearTimeout(hidStopTimer);
+  const rightByte=Math.round(safeWeak*255);
+  sendDualSenseHidRumble(rightByte);
+  hidStopTimer=setTimeout(()=>{
+   sendDualSenseHidRumble(0);
+  },ms);
   return true;
  }
 
- // 2. Gamepad API (Android Chrome BT + PC)
+ // 2. Standardowe Gamepad API — strongMagnitude ZAWSZE na 0, działa tylko weakMagnitude
  const gp=getBestGamepad();
  if(!gp)return false;
 
@@ -232,14 +207,15 @@ function rumbleDualSense(ms,strongNorm,weakNorm){
   gp.vibrationActuator.playEffect('dual-rumble',{
    startDelay:0,
    duration:ms,
-   weakMagnitude:weak,
-   strongMagnitude:strong
+   weakMagnitude:safeWeak,
+   strongMagnitude:0
   }).catch(()=>{});
   return true;
  }
 
+ // Fallback dla starszych przeglądarek z hapticActuators
  if(gp.hapticActuators&&gp.hapticActuators.length&&typeof gp.hapticActuators[0].pulse==='function'){
-  gp.hapticActuators[0].pulse(Math.max(strong,weak),ms).catch(()=>{});
+  gp.hapticActuators[0].pulse(safeWeak,ms).catch(()=>{});
   return true;
  }
 
@@ -255,17 +231,17 @@ function updatePadUI(){
  const info=$('padSetupInfo');
 
  if(hasHid){
-  btnRadio.textContent='🎮 DS OK';
+  btnRadio.textContent='🎮 DS OK (HID)';
   btnRadio.classList.add('pad-on');
-  btnSetup.textContent='🎮 DualSense (HID)';
-  info.textContent='DualSense podpięty przez WebHID ('+(hidIsBluetooth?'Bluetooth':'USB')+') — gotowy.';
+  btnSetup.textContent='🎮 DualSense połączony (HID)';
+  info.textContent='DualSense podpięty przez WebHID ('+(hidIsBluetooth?'Bluetooth':'USB')+') — aktywny tylko lekki silniczek.';
  }else if(gp){
   btnRadio.textContent=hasGpRumble?'🎮 Pad OK':'🎮 Pad (brak wibr.)';
   btnRadio.classList.toggle('pad-on',hasGpRumble);
-  btnSetup.textContent=hasGpRumble?'🎮 Pad gotowy (BT)':'🎮 Pad (brak wibracji)';
+  btnSetup.textContent=hasGpRumble?'🎮 Pad gotowy (BT)':'🎮 Pad wykryty (brak API wibracji)';
   info.textContent=hasGpRumble
-   ?('Wykryto: '+gp.id+' — wibruje razem z telefonem.')
-   :('Wykryto '+gp.id+', ale ta przeglądarka nie wspiera wibracji pada.');
+   ?('Wykryto: '+gp.id+' — aktywny tylko lekki silniczek razem z telefonem.')
+   :('Wykryto '+gp.id+', ale ta przeglądarka nie wystawia vibrationActuator przez BT.');
  }else{
   btnRadio.textContent='🎮 Pad';
   btnRadio.classList.remove('pad-on');
@@ -288,8 +264,8 @@ async function connectDualSense(){
      try{await hidDevice.receiveFeatureReport(0x05);}catch(_){}
     }
     updatePadUI();
-    playTestDotDash();
-    setRadioStatus('DUALSENSE POŁĄCZONY · TEST · —');
+    vibratePattern([RX_DOT_MS,RX_SYMBOL_GAP_MS,RX_DASH_MS,RX_SYMBOL_GAP_MS,RX_DOT_MS]);
+    setRadioStatus('DUALSENSE POŁĄCZONY · TEST · — ·');
     return;
    }
   }catch(err){
@@ -300,21 +276,13 @@ async function connectDualSense(){
  updatePadUI();
  const gp=getBestGamepad();
  if(gp){
-  playTestDotDash();
-  setRadioStatus('DUALSENSE GOTOWY · TEST · —');
+  vibratePattern([RX_DOT_MS,RX_SYMBOL_GAP_MS,RX_DASH_MS,RX_SYMBOL_GAP_MS,RX_DOT_MS]);
+  setRadioStatus('DUALSENSE GOTOWY · TEST · — ·');
  }else{
   const msg='Nie widzę pada — sparuj DualSense w BT i kliknij np. X na padzie';
   log(msg);
   setRadioStatus('NACIŚNIJ PRZYCISK NA PADZIE (NP. X)');
  }
-}
-
-function cyclePower(){
- powerIdx=(powerIdx+1)%POWER_STEPS.length;
- try{localStorage.setItem('ds_power_idx',String(powerIdx));}catch(_){}
- updatePowerUI();
- playTestDotDash();
- setRadioStatus('MOC PADA: '+Math.round(getPadPower()*100)+'% (TEST · —)');
 }
 
 window.addEventListener('gamepadconnected',()=>{
@@ -366,40 +334,36 @@ function renderCode(){
  $('codeView').textContent='TX '+getTxTextPreview()+'   /   RX '+rxDisplay;
 }
 
-// Jednoczesny impuls na telefonie i kontrolerze DualSense
-function triggerBothVibrate(ms,strongNorm,weakNorm){
+// Jednoczesny impuls na telefonie i lekkim silniczku DualSense
+function triggerBothVibrate(ms){
  let triggered=false;
  if(navigator.vibrate){
   try{navigator.vibrate(ms);triggered=true;}catch(_){}
  }
- if(rumbleDualSense(ms,strongNorm,weakNorm)){
+ if(rumbleDualSense(ms,PAD_WEAK_POWER)){
   triggered=true;
  }
  return triggered;
 }
 
-// Osobne profile dla kropki (krótka, lekka, wysoka) i kreski (długa, cięższa, basowa)
-function vibrateSymbol(symbol){
- const isDash=(symbol==='-');
- const ms=isDash?RX_DASH_MS:RX_DOT_MS;
- const p=getPadPower();
- const strong=isDash?(p*1.0):(p*0.28);
- const weak=isDash?(p*0.35):(p*0.75);
-
+function vibrate(ms){
  vibrationQueue=vibrationQueue.then(()=>new Promise(resolve=>{
-  triggerBothVibrate(ms,strong,weak);
-  setTimeout(resolve,ms+RX_SYMBOL_GAP);
+  triggerBothVibrate(ms);
+  setTimeout(resolve,ms+RX_SYMBOL_GAP_MS);
  })).catch(()=>{});
 }
 
-function vibratePause(ms){
- vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,ms))).catch(()=>{});
-}
-
-function playTestDotDash(){
- vibrateSymbol('.');
- vibrateSymbol('-');
- vibrateSymbol('.');
+// Sekwencja [on, off, on, off, ...] zsynchronizowana dla telefonu i pada
+function vibratePattern(pattern){
+ if(!Array.isArray(pattern)||!pattern.length)return;
+ for(let i=0;i<pattern.length;i+=2){
+  const onMs=pattern[i]||0;
+  const offMs=pattern[i+1]||0;
+  vibrationQueue=vibrationQueue.then(()=>new Promise(resolve=>{
+   if(onMs>0)triggerBothVibrate(onMs);
+   setTimeout(resolve,onMs+offMs);
+  })).catch(()=>{});
+ }
 }
 
 function playWholeReply(packet){
@@ -410,11 +374,11 @@ function playWholeReply(packet){
 
  for(const sig of packet.signals){
   if(sig.type==='symbol'&&(sig.symbol==='.'||sig.symbol==='-')){
-   vibrateSymbol(sig.symbol);
+   vibrate(sig.symbol==='.'?RX_DOT_MS:RX_DASH_MS);
   }else if(sig.type==='letter_end'){
-   vibratePause(RX_LETTER_GAP);
+   vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,360)));
   }else if(sig.type==='word_end'){
-   vibratePause(RX_WORD_GAP);
+   vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,770)));
   }
  }
  vibrationQueue=vibrationQueue.then(()=>{
@@ -479,8 +443,7 @@ function startPress(){
  try{
   if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
   else await document.exitFullscreen();
-  vibrateSymbol('.');
-  vibrateSymbol('.');
+  vibratePattern([100,80,100]);
   setRadioStatus('PEŁNY EKRAN PRZEŁĄCZONY');
   pressAt=0;
  }catch(_){}
@@ -520,7 +483,6 @@ function endPress(){
 }
 
 function init(){
- updatePowerUI();
  updatePadUI();
  if(!window.io){
   setStatus('Brak Socket.IO. Odśwież stronę.','bad');
@@ -559,8 +521,6 @@ $('backspace').addEventListener('click',handleBackspace);
 $('send').addEventListener('click',handleSend);
 $('connectPad').addEventListener('click',connectDualSense);
 $('padBtn').addEventListener('click',connectDualSense);
-$('powerBtn').addEventListener('click',cyclePower);
-$('powerSetup').addEventListener('click',cyclePower);
 
 $('vibrate').addEventListener('click',()=>{
  updatePadUI();
@@ -570,8 +530,8 @@ $('vibrate').addEventListener('click',()=>{
   log('Brak wsparcia wibracji w telefonie i nie wykryto pada.');
   return;
  }
- playTestDotDash();
- log('Test · — · ('+Math.round(getPadPower()*100)+'%): '+(hasPhone?'telefon ':'')+(hasPhone&&hasPad?'+ ':'')+(hasPad?'DualSense':''));
+ vibratePattern([RX_DOT_MS,RX_SYMBOL_GAP_MS,RX_DASH_MS,RX_SYMBOL_GAP_MS,RX_DOT_MS]);
+ log('Poszedł test (· — ·): '+(hasPhone?'telefon ':'')+(hasPhone&&hasPad?'+ ':'')+(hasPad?'DualSense (lekki)':''));
 });
 
 const pad=$('pad');
