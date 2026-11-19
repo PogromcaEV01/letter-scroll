@@ -106,11 +106,11 @@ async function askChatGPT(userText) {
         {
           role: "system",
           content:
-            "Odpowiadaj po polsku, ale maksymalnie w jednym dużym zdaniu, bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
+            "Jestes Luna. Jestes inteligentna, zabawna i przyjazna. Lubisz rozmawiac z uzytkownikiem. Odpowiadasz naturalnie i wyczerpujaco. Odpowiadaj po polsku, maksymalnie w dwóch dużych zdaniach, bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
         },
         { role: "user", content: userText }
       ],
-      max_completion_tokens: 1000,
+      max_completion_tokens: 10000,
       temperature: 1
     })
   });
