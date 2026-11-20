@@ -50,13 +50,13 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 </head>
 <body>
 <div class="app" id="setup">
-  <header><h1>MORSE LINK</h1><span class="tag">CHAT MODE</span></header>
+  <header><h1>MORSE LINK</h1><span class="tag">CHAT MODE · 9 WPM</span></header>
   <div class="status"><span id="dot" class="dot"></span><span id="status">Łączę z serwerem…</span></div>
   <section class="panel">
     <strong>Łączenie z ChatGPT przez Morse'a</strong>
     <div id="setupLog">Sprawdzam połączenie ze Socket.IO. Zaraz odpali się panel nadawania.</div>
     <div class="row">
-      <button id="vibrate">Test wibracji (· — ·)</button>
+      <button id="vibrate">Test dźwięku i wibracji (· — ·)</button>
       <button id="connectPad">🎮 Połącz DualSense</button>
     </div>
     <div class="help" id="padSetupInfo">Sparuj DualSense przez Bluetooth (PS + Create), a potem wciśnij dowolny przycisk na padzie (np. X), żeby przeglądarka go wykryła.</div>
@@ -73,11 +73,11 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
   <div id="radioStatus" style="margin-top:24px">GOTOWY · NADAWAJ MORSEM</div>
   
   <button id="pad" aria-label="Krótko naciśnij dla kropki, przytrzymaj dla kreski. Przytrzymaj 7 sekund dla pełnego ekranu.">
-    <strong>NADAJ</strong><span>krótko · / długo — (przytrzymaj 7s = pełny ekran)</span>
+    <strong>NADAJ</strong><span>krótko · (130ms) / długo — (390ms) · 7s = pełny ekran</span>
   </button>
   
   <div id="codeView">TX — &nbsp; / &nbsp; RX —</div>
-  <div id="radioHint">0.85s ciszy = koniec litery · 1.9s = spacja · Kliknij „Wyślij” u góry</div>
+  <div id="radioHint">9 WPM (PARIS) · 550Hz · 0.39s ciszy = koniec litery · 0.91s = spacja · Kliknij „Wyślij” u góry</div>
 </div>
 
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
@@ -85,13 +85,25 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const DOT_DASH_MS=260,LETTER_GAP_MS=850,WORD_GAP_MS=1900;
 
-// Ustawienia wibracji (tylko słabszy silniczek pada + wyraźne czasy pod Morse'a)
+// Ustawienia Morse'a: 9 WPM (wg słowa PARIS)
+const UNIT_MS=130;                // 1 jednostka = 130 ms
+const MORSE_FREQ_HZ=550;          // Częstotliwość tonu: 550 Hz
+const MORSE_VOLUME=1.0;           // Głośność: 100% (0.0 - 1.0)
+
+const RX_DOT_MS=UNIT_MS;          // .  = 130 ms (1 unit)
+const RX_DASH_MS=UNIT_MS*3;       // -  = 390 ms (3 units)
+const RX_SYMBOL_GAP_MS=UNIT_MS;   // przerwa między symbolami = 130 ms (1 unit)
+const RX_LETTER_GAP_MS=UNIT_MS*3; // przerwa między literami  = 390 ms (3 units)
+const RX_WORD_GAP_MS=UNIT_MS*7;   // przerwa między słowami / = 910 ms (7 units)
+
+// Progi nadawania (TX) spójne z Unit Time = 130 ms
+const DOT_DASH_MS=UNIT_MS*2;      // 260 ms (połowa między 130 ms a 390 ms)
+const LETTER_GAP_MS=RX_LETTER_GAP_MS; // 390 ms
+const WORD_GAP_MS=RX_WORD_GAP_MS;     // 910 ms
+
+// Ustawienia wibracji (tylko słabszy silniczek pada)
 const PAD_WEAK_POWER=0.35; // 0.0 - 1.0 (tylko prawy/lekki silniczek; lewy/silny jest zawsze na 0)
-const RX_DOT_MS=90;
-const RX_DASH_MS=340;
-const RX_SYMBOL_GAP_MS=190;
 
 // Pamiętaj: Jeśli testujesz lokalnie, podmień poniższy URL na dokładny adres swojego serwera na Renderze!
 const BACKEND_URL=location.hostname.endsWith('.onrender.com')?location.origin:'https://letter-scroll.onrender.com';
@@ -111,6 +123,86 @@ let txLetterCodes=[];
 let rxDisplay='—';
 let txTimer=null,wordTimer=null,fullscreenTimer=null;
 let vibrationQueue=Promise.resolve();
+
+/* ================= AUDIO MORSE'A (550 Hz, 100%) ================= */
+let audioCtx=null;
+let liveOsc=null,liveGain=null;
+
+function ensureAudio(){
+ const Ctx=window.AudioContext||window.webkitAudioContext;
+ if(!Ctx)return null;
+ if(!audioCtx)audioCtx=new Ctx();
+ if(audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});
+ return audioCtx;
+}
+
+function playTone(ms){
+ const ctx=ensureAudio();
+ if(!ctx||MORSE_VOLUME<=0)return false;
+ try{
+  const now=ctx.currentTime;
+  const dur=Math.max(0.01,ms/1000);
+  const ramp=Math.min(0.005,dur/4);
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(MORSE_FREQ_HZ,now);
+  gain.gain.setValueAtTime(0.0001,now);
+  gain.gain.linearRampToValueAtTime(MORSE_VOLUME,now+ramp);
+  gain.gain.setValueAtTime(MORSE_VOLUME,now+dur-ramp);
+  gain.gain.linearRampToValueAtTime(0.0001,now+dur);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now+dur+0.005);
+  return true;
+ }catch(_){
+  return false;
+ }
+}
+
+function startLiveTone(){
+ const ctx=ensureAudio();
+ if(!ctx||MORSE_VOLUME<=0)return;
+ stopLiveTone();
+ try{
+  const now=ctx.currentTime;
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(MORSE_FREQ_HZ,now);
+  gain.gain.setValueAtTime(0.0001,now);
+  gain.gain.linearRampToValueAtTime(MORSE_VOLUME,now+0.005);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  liveOsc=osc;
+  liveGain=gain;
+ }catch(_){}
+}
+
+function stopLiveTone(){
+ if(!liveOsc||!liveGain||!audioCtx)return;
+ try{
+  const now=audioCtx.currentTime;
+  const osc=liveOsc;
+  const gain=liveGain;
+  liveOsc=null;
+  liveGain=null;
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setValueAtTime(Math.max(0.0001,gain.gain.value),now);
+  gain.gain.linearRampToValueAtTime(0.0001,now+0.005);
+  osc.stop(now+0.01);
+ }catch(_){
+  liveOsc=null;
+  liveGain=null;
+ }
+}
+
+// Odblokowanie AudioContext przy pierwszej interakcji użytkownika
+window.addEventListener('pointerdown',()=>ensureAudio(),{once:true,passive:true});
+window.addEventListener('keydown',()=>ensureAudio(),{once:true,passive:true});
+/* ================================================================ */
 
 /* ================= DUALSENSE BT / GAMEPAD + WEBHID ================= */
 const SONY_VID=0x054c;
@@ -251,6 +343,7 @@ function updatePadUI(){
 }
 
 async function connectDualSense(){
+ ensureAudio();
  if('hid' in navigator){
   try{
    const devices=await navigator.hid.requestDevice({
@@ -334,9 +427,12 @@ function renderCode(){
  $('codeView').textContent='TX '+getTxTextPreview()+'   /   RX '+rxDisplay;
 }
 
-// Jednoczesny impuls na telefonie i lekkim silniczku DualSense
+// Jednoczesny impuls: dźwięk 550 Hz (100%) + wibracja telefonu + lekki silniczek DualSense
 function triggerBothVibrate(ms){
  let triggered=false;
+ if(playTone(ms)){
+  triggered=true;
+ }
  if(navigator.vibrate){
   try{navigator.vibrate(ms);triggered=true;}catch(_){}
  }
@@ -353,7 +449,7 @@ function vibrate(ms){
  })).catch(()=>{});
 }
 
-// Sekwencja [on, off, on, off, ...] zsynchronizowana dla telefonu i pada
+// Sekwencja [on, off, on, off, ...] zsynchronizowana dla audio, telefonu i pada
 function vibratePattern(pattern){
  if(!Array.isArray(pattern)||!pattern.length)return;
  for(let i=0;i<pattern.length;i+=2){
@@ -372,13 +468,25 @@ function playWholeReply(packet){
  renderCode();
  setRadioStatus('GPT: '+(packet.replyText||''));
 
+ let accumulatedSilenceMs=0;
  for(const sig of packet.signals){
   if(sig.type==='symbol'&&(sig.symbol==='.'||sig.symbol==='-')){
    vibrate(sig.symbol==='.'?RX_DOT_MS:RX_DASH_MS);
+   accumulatedSilenceMs=RX_SYMBOL_GAP_MS; // 130 ms (1 unit) po każdym symbolu
   }else if(sig.type==='letter_end'){
-   vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,360)));
+   // Łączna przerwa między literami = 390 ms (3 units)
+   const extra=Math.max(0,RX_LETTER_GAP_MS-accumulatedSilenceMs);
+   if(extra>0){
+    vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,extra)));
+   }
+   accumulatedSilenceMs=Math.max(accumulatedSilenceMs,RX_LETTER_GAP_MS);
   }else if(sig.type==='word_end'){
-   vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,770)));
+   // Łączna przerwa między słowami = 910 ms (7 units)
+   const extra=Math.max(0,RX_WORD_GAP_MS-accumulatedSilenceMs);
+   if(extra>0){
+    vibrationQueue=vibrationQueue.then(()=>new Promise(r=>setTimeout(r,extra)));
+   }
+   accumulatedSilenceMs=Math.max(accumulatedSilenceMs,RX_WORD_GAP_MS);
   }
  }
  vibrationQueue=vibrationQueue.then(()=>{
@@ -436,18 +544,21 @@ function startPress(){
  if(pressAt)return;
  pressAt=performance.now();
  $('pad').classList.add('active');
+ startLiveTone();
  clearTimeout(txTimer);
  clearTimeout(wordTimer);
 
  fullscreenTimer=setTimeout(async()=>{
- try{
-  if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
-  else await document.exitFullscreen();
-  vibratePattern([100,80,100]);
-  setRadioStatus('PEŁNY EKRAN PRZEŁĄCZONY');
-  pressAt=0;
- }catch(_){}
-},7000);
+  stopLiveTone();
+  try{
+   if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
+   else await document.exitFullscreen();
+   vibratePattern([RX_DOT_MS,RX_SYMBOL_GAP_MS,RX_DOT_MS]);
+   setRadioStatus('PEŁNY EKRAN PRZEŁĄCZONY');
+   pressAt=0;
+   $('pad').classList.remove('active');
+  }catch(_){}
+ },7000);
 }
 
 function endPress(){
@@ -455,6 +566,7 @@ function endPress(){
  const duration=performance.now()-pressAt;
  pressAt=0;
  $('pad').classList.remove('active');
+ stopLiveTone();
 
  if(fullscreenTimer){
   clearTimeout(fullscreenTimer);
@@ -523,15 +635,22 @@ $('connectPad').addEventListener('click',connectDualSense);
 $('padBtn').addEventListener('click',connectDualSense);
 
 $('vibrate').addEventListener('click',()=>{
+ ensureAudio();
  updatePadUI();
+ const hasAudio=Boolean(audioCtx);
  const hasPhone=Boolean(navigator.vibrate);
  const hasPad=Boolean((hidDevice&&hidDevice.opened)||getBestGamepad());
- if(!hasPhone&&!hasPad){
-  log('Brak wsparcia wibracji w telefonie i nie wykryto pada.');
+ if(!hasAudio&&!hasPhone&&!hasPad){
+  log('Brak wsparcia dźwięku, wibracji w telefonie i nie wykryto pada.');
   return;
  }
  vibratePattern([RX_DOT_MS,RX_SYMBOL_GAP_MS,RX_DASH_MS,RX_SYMBOL_GAP_MS,RX_DOT_MS]);
- log('Poszedł test (· — ·): '+(hasPhone?'telefon ':'')+(hasPhone&&hasPad?'+ ':'')+(hasPad?'DualSense (lekki)':''));
+ const active=[
+  hasAudio?'audio 550Hz (100%)':'',
+  hasPhone?'telefon':'',
+  hasPad?'DualSense (lekki)':''
+ ].filter(Boolean).join(' + ');
+ log('Poszedł test (· — ·, 130/390ms): '+active);
 });
 
 const pad=$('pad');
