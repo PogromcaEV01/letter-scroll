@@ -15,20 +15,25 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 10000;
 
 // Słownik do dekodowania (Morse -> Tekst) i enkodowania (Tekst -> Morse)
+// Zawiera litery A-Z, cyfry 0-9 oraz międzynarodowe symbole kodu Morse'a
 const MORSE_TO_CHAR = {
   ".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F", "--.": "G",
   "....": "H", "..": "I", ".---": "J", "-.-": "K", ".-..": "L", "--": "M", "-.": "N",
   "---": "O", ".--.": "P", "--.-": "Q", ".-.": "R", "...": "S", "-": "T", "..-": "U",
   "...-": "V", ".--": "W", "-..-": "X", "-.--": "Y", "--..": "Z",
   "-----": "0", ".----": "1", "..---": "2", "...--": "3", "....-": "4",
-  ".....": "5", "-....": "6", "--...": "7", "---..": "8", "----.": "9"
+  ".....": "5", "-....": "6", "--...": "7", "---..": "8", "----.": "9",
+  ".-.-.-": ".", "--..--": ",", "..--..": "?", ".----.": "'", "-.-.--": "!",
+  "-..-.": "/", "-.--.": "(", "-.--.-": ")", ".-...": "&", "---...": ":",
+  "-.-.-.": ";", "-...-": "=", ".-.-.": "+", "-....-": "-", "..--.-": "_",
+  ".-..-.": '"', "...-..-": "$", ".--.-.": "@"
 };
 
 const CHAR_TO_MORSE = Object.fromEntries(
   Object.entries(MORSE_TO_CHAR).map(([morse, ch]) => [ch, morse])
 );
 
-// DEKODER: zamienia ciąg Morse'a (np. "... --- ... / - . ... -") na zwykły tekst
+// DEKODER: zamienia ciąg Morse'a (np. "... --- ... / - . ... - -.-.--") na zwykły tekst
 function decodeMorseToText(morseString) {
   return String(morseString || "")
     .trim()
@@ -36,7 +41,7 @@ function decodeMorseToText(morseString) {
     .map((word) =>
       word
         .trim()
-        .split(/\s+/) // litery oddzielone spacją
+        .split(/\s+/) // znaki oddzielone spacją
         .map((code) => MORSE_TO_CHAR[code] || "")
         .join("")
     )
@@ -44,16 +49,28 @@ function decodeMorseToText(morseString) {
     .join(" ");
 }
 
-// Normalizacja odpowiedzi z GPT (usuwa polskie ogonki i znaki specjalne przed enkodowaniem)
+// Normalizacja odpowiedzi z GPT (usuwa polskie ogonki i zachowuje wszystkie obsługiwane znaki i symbole Morse'a)
 function normalizeText(text) {
-  return String(text || "")
+  const base = String(text || "")
+    .replace(/[„”«»“”]/g, '"')
+    .replace(/[‘’`]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/…/g, "...")
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/Ł/g, "L")
-    .replace(/[^A-Z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/Ł/g, "L");
+
+  let clean = "";
+  for (const ch of base) {
+    if (ch === " " || CHAR_TO_MORSE[ch]) {
+      clean += ch;
+    } else {
+      clean += " ";
+    }
+  }
+
+  return clean.replace(/\s+/g, " ").trim();
 }
 
 // ENKODER: zamienia cały tekst odpowiedzi GPT na jedną paczkę sygnałów dla telefonu
@@ -106,7 +123,7 @@ async function askChatGPT(userText) {
         {
           role: "system",
           content:
-            "Jestes Luna. Jestes inteligentna, zabawna i przyjazna. Lubisz rozmawiac z uzytkownikiem. Odpowiadasz naturalnie i wyczerpujaco. Odpowiadaj po polsku, maksymalnie w dwóch dużych zdaniach, bez polskich znaków diakrytycznych i bez interpunkcji (tylko A-Z i 0-9). Twoja odpowiedź jest odtwarzana na telefonie wibracjami w alfabecie Morse'a."
+            "Jestes Luna. Jestes inteligentna, zabawna i przyjazna. Lubisz rozmawiac z uzytkownikiem. Odpowiadasz naturalnie i wyczerpujaco. Odpowiadaj po polsku, maksymalnie w dwóch dużych zdaniach, bez polskich znaków diakrytycznych. Możesz używać liter A-Z, cyfr 0-9 oraz standardowych symboli Morse'a (. , ? ! - : ; ' \" ( ) / + = & @ $ _). Twoja odpowiedź jest odtwarzana dźwiękiem i wibracjami w alfabecie Morse'a."
         },
         { role: "user", content: userText }
       ],
@@ -117,11 +134,11 @@ async function askChatGPT(userText) {
 
   const data = await response.json();
   if (!response.ok) {
-  console.error("OPENAI ERROR:", response.status, data);
-  throw new Error(
-    `OpenAI HTTP ${response.status}: ${data?.error?.message || JSON.stringify(data)}`
-  );
-}
+    console.error("OPENAI ERROR:", response.status, data);
+    throw new Error(
+      `OpenAI HTTP ${response.status}: ${data?.error?.message || JSON.stringify(data)}`
+    );
+  }
 
   return data?.choices?.[0]?.message?.content?.trim() || "OK";
 }
@@ -154,7 +171,7 @@ io.on("connection", (socket) => {
     const decodedText = decodeMorseToText(rawMorse);
 
     if (!decodedText) {
-      if (typeof ack === "function") ack({ ok: false, error: "Nie rozpoznano liter Morse'a." });
+      if (typeof ack === "function") ack({ ok: false, error: "Nie rozpoznano znaków Morse'a." });
       return;
     }
 
