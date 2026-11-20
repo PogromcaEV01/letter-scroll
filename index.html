@@ -12,8 +12,9 @@
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:#f4f6fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
 body{min-height:100dvh;overscroll-behavior:none}
-button{font:inherit;border:1px solid var(--line);background:#293244;color:white;border-radius:12px;padding:13px 15px;cursor:pointer;touch-action:manipulation}
+button{font:inherit;border:1px solid var(--line);background:#293244;color:white;border-radius:12px;padding:13px 15px;cursor:pointer;touch-action:manipulation;transition:transform .08s ease,filter .08s ease}
 button:disabled{opacity:.45}
+button.key-active{transform:scale(0.95);filter:brightness(1.25)}
 .primary{background:#dce6ff;color:#111827;border-color:#dce6ff;font-weight:750}
 .app{max-width:720px;margin:auto;min-height:100dvh;padding:18px;display:flex;flex-direction:column;gap:14px;justify-content:center}
 header{display:flex;align-items:center;justify-content:space-between}
@@ -45,7 +46,7 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 
 #radioStatus{font-size:12px;color:#aab5c8;text-align:center;letter-spacing:.1em;margin-top:5px}
 #codeView{font:16px ui-monospace,monospace;letter-spacing:.12em;min-height:28px;color:#e5ecfa;text-align:center;overflow-wrap:anywhere;max-width:92vw;padding:4px}
-#radioHint{font-size:11px;color:#77849b;text-align:center}
+#radioHint{font-size:11px;color:#77849b;text-align:center;line-height:1.5}
 </style>
 </head>
 <body>
@@ -65,8 +66,8 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
 
 <div id="radio">
   <div id="topToolbar">
-    <button id="backspace" title="Skasuj ostatnią literę">⌫</button>
-    <button id="send" class="send-btn" title="Wyślij wiadomość do GPT">✈️ Wyślij</button>
+    <button id="backspace" title="Skasuj ostatni znak / literę (klawisz Backspace)">⌫</button>
+    <button id="send" class="send-btn" title="Wyślij wiadomość do GPT (klawisz Enter)">✈️ Wyślij</button>
     <button id="padBtn" title="Połącz lub przetestuj kontroler DualSense">🎮 Pad</button>
   </div>
 
@@ -77,7 +78,7 @@ h1{font-size:19px;letter-spacing:.14em;margin:0}
   </button>
   
   <div id="codeView">TX — &nbsp; / &nbsp; RX —</div>
-  <div id="radioHint">9 WPM (PARIS) · 550Hz · 0.39s ciszy = koniec litery · 0.91s = spacja · Kliknij „Wyślij” u góry</div>
+  <div id="radioHint">9 WPM (PARIS) · 550Hz · 0.39s = litera · 0.91s = spacja<br>PC: Spacja = nadaj · Backspace = usuń · Enter = wyślij</div>
 </div>
 
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
@@ -108,13 +109,18 @@ const PAD_WEAK_POWER=0.35; // 0.0 - 1.0 (tylko prawy/lekki silniczek; lewy/silny
 // Pamiętaj: Jeśli testujesz lokalnie, podmień poniższy URL na dokładny adres swojego serwera na Renderze!
 const BACKEND_URL=location.hostname.endsWith('.onrender.com')?location.origin:'https://letter-scroll.onrender.com';
 
+// Pełny słownik Morse'a: litery, cyfry i symbole interpunkcyjne
 const MORSE_TO_CHAR = {
   ".-":"A","-...":"B","-.-.":"C","-..":"D",".":"E","..-.":"F","--.":"G",
   "....":"H","..":"I",".---":"J","-.-":"K",".-..":"L","--":"M","-.":"N",
   "---":"O",".--.":"P","--.-":"Q",".-.":"R","...":"S","-":"T","..-":"U",
   "...-":"V",".--":"W","-..-":"X","-.--":"Y","--..":"Z",
   "-----":"0",".----":"1","..---":"2","...--":"3","....-":"4",
-  ".....":"5","-....":"6","--...":"7","---..":"8","----.":"9"
+  ".....":"5","-....":"6","--...":"7","---..":"8","----.":"9",
+  ".-.-.-":".","--..--":",","..--..":"?",".----.":"'","-.-.--":"!",
+  "-..-.":"/","-.--.":"(","-.--.-":")",".-...":"&","---...":":",
+  "-.-.-.":";","-...-":"=",".-.-.":"+","-....-":"-","..--.-":"_",
+  ".-..-.":'"',"...-..-":"$",".--.-.":"@"
 };
 
 let socket=null,pressAt=0;
@@ -400,6 +406,12 @@ const setStatus=(s,k='')=>{$('status').textContent=s;$('dot').className='dot '+k
 const log=s=>$('setupLog').textContent=s;
 const setRadioStatus=s=>$('radioStatus').textContent=s;
 
+function flashButton(btn){
+ if(!btn)return;
+ btn.classList.add('key-active');
+ setTimeout(()=>btn.classList.remove('key-active'),120);
+}
+
 function showRadio(){
  $('setup').style.display='none';
  $('radio').classList.add('show');
@@ -502,6 +514,8 @@ function flushLetter(){
 }
 
 function handleBackspace(){
+ clearTimeout(txTimer);
+ clearTimeout(wordTimer);
  if(txLetter.length>0){
   txLetter=txLetter.slice(0,-1);
  }else if(txLetterCodes.length>0){
@@ -514,6 +528,8 @@ function handleBackspace(){
 }
 
 function handleSend(){
+ clearTimeout(txTimer);
+ clearTimeout(wordTimer);
  if(txLetter){
   txLetterCodes.push(txLetter);
   txLetter='';
@@ -662,10 +678,25 @@ pad.addEventListener('pointercancel',()=>{
 });
 pad.addEventListener('contextmenu',e=>e.preventDefault());
 
+// Obsługa klawiatury PC: Spacja (nadawanie), Backspace (usuwanie), Enter (wysyłanie)
 document.addEventListener('keydown',e=>{
- if(e.code==='Space'&&!e.repeat&&$('radio').classList.contains('show')){
+ if(!$('radio').classList.contains('show'))return;
+
+ if(e.code==='Space'&&!e.repeat){
   e.preventDefault();
   startPress();
+ }else if(e.key==='Backspace'||e.code==='Backspace'){
+  e.preventDefault();
+  if(!pressAt){
+   flashButton($('backspace'));
+   handleBackspace();
+  }
+ }else if((e.key==='Enter'||e.code==='Enter'||e.code==='NumpadEnter')&&!e.repeat){
+  e.preventDefault();
+  if(!pressAt){
+   flashButton($('send'));
+   handleSend();
+  }
  }
 });
 document.addEventListener('keyup',e=>{
